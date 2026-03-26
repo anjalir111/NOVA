@@ -6,7 +6,7 @@ import { Camera, Sliders, Loader2, Sparkles, AlertCircle, UploadCloud, ArrowRigh
 import { useDropzone } from "react-dropzone";
 import { triggerHaptic } from "../utils/haptics";
 
-const API_URL = "https://nova-backend-neec.onrender.com";
+const API_URL = "https://nova-backend-uemq.onrender.com";
 
 export default function FindClothes() {
   const [inputMode, setInputMode] = useState<"photo" | "manual">("photo");

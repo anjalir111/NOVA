@@ -7,7 +7,7 @@ import { useDropzone } from "react-dropzone";
 import { triggerHaptic } from "../utils/haptics";
 import MetricRing from "./MetricRing";
 
-const API_URL = "https://nova-backend-neec.onrender.com";
+const API_URL = "https://nova-backend-uemq.onrender.com";
 
 export default function RateOutfit() {
   const [loading, setLoading] = useState(false);
