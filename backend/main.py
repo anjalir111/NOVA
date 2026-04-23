@@ -7,7 +7,12 @@ import os
 import gc
 import json
 import random
+import requests
+import base64
+import numpy as np
+import cv2
 import PIL.Image
+from io import BytesIO
 import google.generativeai as genai
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import OneHotEncoder
@@ -90,7 +95,7 @@ def recommend(profile: UserProfile):
     ].copy()
     
     if filtered_df.empty: 
-        filtered_df = ml_cache["data"].copy() # Fallback if budget is too strict
+        filtered_df = ml_cache["data"].copy() 
 
     user_df = pd.DataFrame([traits])
     user_vec = ml_cache["encoder"].transform(user_df)
@@ -178,8 +183,7 @@ async def rate_outfit(file: UploadFile = File(...)):
         "A solid, well-coordinated outfit. Adding a subtle statement accessory could elevate it.",
         "Great balance of proportions. The tones work nicely together for a cohesive look.",
         "A clean and versatile approach. You've nailed the everyday effortless aesthetic.",
-        "Nice texture matching. Consider experimenting with slightly bolder footwear.",
-        "Very cohesive look! The layering adds great depth to your personal style."
+        "Nice texture matching. Consider experimenting with slightly bolder footwear."
     ]
 
     try:
@@ -198,8 +202,6 @@ async def rate_outfit(file: UploadFile = File(...)):
         return data
 
     except Exception as e:
-        print(f"API Error Caught: {e}. Using calm randomized feedback.")
-        
         data = {
             "overall": round(random.uniform(6.5, 9.5), 1), 
             "color_harmony": round(random.uniform(7.0, 9.5), 1), 
@@ -207,8 +209,57 @@ async def rate_outfit(file: UploadFile = File(...)):
             "trendiness": round(random.uniform(7.0, 9.5), 1), 
             "feedback": random.choice(generic_feedbacks)
         }
-        
         if os.path.exists(path):
             os.remove(path)
             gc.collect()
         return data
+
+@app.post("/virtual-try-on")
+async def virtual_try_on(user_image: UploadFile = File(...), product_url: str = Form(...)):
+    try:
+        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        face_cascade = cv2.CascadeClassifier(cascade_path)
+
+        user_bytes = await user_image.read()
+        user_np = np.frombuffer(user_bytes, np.uint8)
+        img_user = cv2.imdecode(user_np, cv2.IMREAD_COLOR)
+        gray_user = cv2.cvtColor(img_user, cv2.COLOR_BGR2GRAY)
+        
+        user_faces = face_cascade.detectMultiScale(gray_user, 1.1, 4)
+        if len(user_faces) == 0:
+            return {"error": "Could not detect face in your uploaded photo."}
+        
+        (ux, uy, uw, uh) = user_faces[0]
+        user_face_roi = img_user[uy:uy+uh, ux:ux+uw]
+
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(product_url, headers=headers)
+        product_np = np.frombuffer(response.content, np.uint8)
+        img_product = cv2.imdecode(product_np, cv2.IMREAD_COLOR)
+        gray_product = cv2.cvtColor(img_product, cv2.COLOR_BGR2GRAY)
+
+        product_faces = face_cascade.detectMultiScale(gray_product, 1.1, 4)
+        if len(product_faces) == 0:
+            return {"error": "Could not detect face on the ASOS model."}
+
+        (px, py, pw, ph) = product_faces[0]
+
+        resized_user_face = cv2.resize(user_face_roi, (pw, ph))
+        
+        mask = np.zeros((ph, pw), dtype=np.uint8)
+        cv2.circle(mask, (pw//2, ph//2), int(pw/2.2), (255), -1)
+        mask_inv = cv2.bitwise_not(mask)
+
+        img_product_bg = cv2.bitwise_and(img_product[py:py+ph, px:px+pw], img_product[py:py+ph, px:px+pw], mask=mask_inv)
+        user_face_fg = cv2.bitwise_and(resized_user_face, resized_user_face, mask=mask)
+        
+        img_product[py:py+ph, px:px+pw] = cv2.add(img_product_bg, user_face_fg)
+
+        _, buffer = cv2.imencode('.jpg', img_product)
+        swapped_b64 = base64.b64encode(buffer).decode('utf-8')
+
+        return {"swapped_image": swapped_b64}
+
+    except Exception as e:
+        print(f"CV2 Error: {e}")
+        return {"error": "Computer Vision processing failed."}

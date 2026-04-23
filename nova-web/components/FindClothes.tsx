@@ -17,10 +17,13 @@ export default function FindClothes() {
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [selectedSize, setSelectedSize] = useState<string>("M");
   const [maxBudget, setMaxBudget] = useState<number>(200);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [arModeActive, setArModeActive] = useState(false);
+  
+  const [swappingMode, setSwappingMode] = useState(false);
+  const [swappedImage, setSwappedImage] = useState<string | null>(null);
   
   const [manualForm, setManualForm] = useState({ 
     gender: "unisex", age_group: "young_adult", occasion: "casual", skin_tone: "medium", style: "minimalist" 
@@ -30,7 +33,7 @@ export default function FindClothes() {
     if (selectedProduct) document.body.style.overflow = 'hidden';
     else {
       document.body.style.overflow = 'unset';
-      setArModeActive(false);
+      setSwappedImage(null);
     }
     return () => { document.body.style.overflow = 'unset'; };
   }, [selectedProduct]);
@@ -119,6 +122,35 @@ export default function FindClothes() {
       setSysError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVirtualTryOn = async () => {
+    if (!previewImage || !selectedProduct) return;
+    setSwappingMode(true);
+    triggerHaptic();
+    
+    try {
+      const response = await fetch(previewImage);
+      const blob = await response.blob();
+      const file = new File([blob], "user_face.jpg", { type: "image/jpeg" });
+
+      const formData = new FormData();
+      formData.append("user_image", file);
+      formData.append("product_url", selectedProduct.image_url);
+
+      const res = await fetch(`${API_URL}/virtual-try-on`, { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (data.swapped_image) {
+        setSwappedImage(`data:image/jpeg;base64,${data.swapped_image}`);
+      } else {
+        setSysError(data.error || "Computer Vision failed to map geometry.");
+      }
+    } catch (err) {
+      setSysError("Server connection severed during CV processing.");
+    } finally {
+      setSwappingMode(false);
     }
   };
 
@@ -337,34 +369,33 @@ export default function FindClothes() {
               </button>
 
               <div className="w-full md:w-1/2 h-[350px] md:h-auto bg-zinc-900 relative flex items-center justify-center overflow-hidden">
-                <img src={selectedProduct.image_url} alt={selectedProduct.item} className="w-full h-full object-cover" />
+                <img src={swappedImage || selectedProduct.image_url} alt={selectedProduct.item} className="w-full h-full object-cover" />
                 
-                {arModeActive && previewImage && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.5, y: -50 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-                    className="absolute top-[10%] w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-4 border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.8)] z-30"
-                  >
-                    <img src={previewImage} className="w-full h-full object-cover" />
-                    <motion.div animate={{ top: ["-10%", "110%"] }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }} className="absolute left-0 right-0 h-[2px] bg-white/80 z-40 shadow-[0_0_10px_white]" />
-                  </motion.div>
+                {swappingMode && (
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-30">
+                    <Loader2 className="animate-spin text-blue-500 mb-4" size={32}/>
+                    <span className="text-white font-mono text-sm tracking-widest uppercase">Mapping Geometry...</span>
+                  </div>
                 )}
-
-                <div className="absolute bottom-4 left-4 flex gap-2 z-20">
-                  <div className="w-12 h-16 rounded-lg overflow-hidden border-2 border-white/50 cursor-pointer"><img src={selectedProduct.image_url} className="w-full h-full object-cover" /></div>
-                  <div className="w-12 h-16 rounded-lg overflow-hidden border border-white/10 opacity-50 cursor-pointer"><img src={selectedProduct.image_url} className="w-full h-full object-cover scale-150" /></div>
-                </div>
               </div>
 
               <div className="w-full md:w-1/2 p-6 md:p-10 overflow-y-auto hide-scrollbar flex flex-col">
                 <div className="flex justify-between items-start mb-2">
                   <p className="text-blue-400 font-mono text-xs font-bold tracking-widest uppercase">{selectedProduct.brand}</p>
-                  {previewImage && (
+                  
+                  {previewImage && !swappedImage && (
                     <button 
-                      onClick={() => setArModeActive(!arModeActive)}
-                      className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border transition-all ${arModeActive ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-white/5 border-white/20 text-white hover:bg-white/10'}`}
+                      onClick={handleVirtualTryOn}
+                      disabled={swappingMode}
+                      className="px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border transition-all bg-white/5 border-white/20 text-white hover:bg-white/10"
                     >
-                      <ScanFace size={14} /> {arModeActive ? "AR Active" : "Virtual Try-On"}
+                      <ScanFace size={14} /> True Face Swap
                     </button>
+                  )}
+                  {swappedImage && (
+                    <span className="px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border bg-blue-500/20 border-blue-500 text-blue-400">
+                      <ScanFace size={14} /> CV Matrix Active
+                    </span>
                   )}
                 </div>
                 
