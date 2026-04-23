@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
@@ -35,12 +35,17 @@ class UserProfile(BaseModel):
     occasion: str
     skin_tone: str
     style: str
+    max_price: float = 1000.0
 
 def load_model():
     if not ml_cache["loaded"]:
         try:
             csv_path = os.path.join(BASE, "data", "fashion_dataset.csv")
             df = pd.read_csv(csv_path)
+            if 'price' not in df.columns:
+                df['price'] = [random.randint(20, 200) for _ in range(len(df))]
+            df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(89.0)
+            
             encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
             encoder.fit(df[["gender", "age_group", "occasion", "skin_tone", "style"]])
             ml_cache["encoder"] = encoder
@@ -51,7 +56,7 @@ def load_model():
             print(f"CSV Load Error: {e}. Generating fallback database.")
             fallback_data = [{
                 "gender": "unisex", "age_group": "young_adult", "occasion": "casual", "skin_tone": "medium", "style": "minimalist",
-                "item": "Essential Default Jacket", "brand": "NOVA Basics", "color": "black", "price": 89,
+                "item": "Essential Default Jacket", "brand": "NOVA Basics", "color": "black", "price": 89.0,
                 "image_url": "https://dummyimage.com/400x600/000000/ffffff&text=NOVA+Basics",
                 "product_url": "https://amazon.com"
             }]
@@ -79,8 +84,13 @@ def recommend(profile: UserProfile):
     else:
         user_gender = "unisex"
         
-    filtered_df = ml_cache["data"][ml_cache["data"]["gender"].isin([user_gender, "unisex"])].copy()
-    if filtered_df.empty: filtered_df = ml_cache["data"].copy()
+    filtered_df = ml_cache["data"][
+        (ml_cache["data"]["gender"].isin([user_gender, "unisex"])) & 
+        (ml_cache["data"]["price"] <= profile.max_price)
+    ].copy()
+    
+    if filtered_df.empty: 
+        filtered_df = ml_cache["data"].copy() # Fallback if budget is too strict
 
     user_df = pd.DataFrame([traits])
     user_vec = ml_cache["encoder"].transform(user_df)
@@ -95,7 +105,7 @@ def recommend(profile: UserProfile):
     return {"results": results}
 
 @app.post("/analyze-image")
-async def analyze_image(file: UploadFile = File(...)):
+async def analyze_image(file: UploadFile = File(...), max_price: float = Form(1000.0)):
     path = f"temp_{file.filename}"
     with open(path, "wb") as f:
         f.write(await file.read())
@@ -140,8 +150,13 @@ async def analyze_image(file: UploadFile = File(...)):
     else:
         user_gender = "unisex"
         
-    filtered_df = ml_cache["data"][ml_cache["data"]["gender"].isin([user_gender, "unisex"])].copy()
-    if filtered_df.empty: filtered_df = ml_cache["data"].copy()
+    filtered_df = ml_cache["data"][
+        (ml_cache["data"]["gender"].isin([user_gender, "unisex"])) & 
+        (ml_cache["data"]["price"] <= max_price)
+    ].copy()
+    
+    if filtered_df.empty: 
+        filtered_df = ml_cache["data"].copy()
     
     user_df = pd.DataFrame([traits])
     user_vec = ml_cache["encoder"].transform(user_df)
