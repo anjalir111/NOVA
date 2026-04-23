@@ -33,6 +33,7 @@ BASE = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(BASE, "models", "model.pkl")
 
 ml_cache = {"encoder": None, "data": None, "loaded": False}
+ML_FEATURES = ["gender", "age_group", "occasion", "skin_tone", "style"]
 
 class UserProfile(BaseModel):
     gender: str
@@ -47,12 +48,15 @@ def load_model():
         try:
             csv_path = os.path.join(BASE, "data", "fashion_dataset.csv")
             df = pd.read_csv(csv_path)
+            
             if 'price' not in df.columns:
                 df['price'] = [random.randint(20, 200) for _ in range(len(df))]
             df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(89.0)
+            df['gender'] = df['gender'].astype(str).str.lower().str.strip()
+            df['gender'] = df['gender'].replace({'men': 'male', 'women': 'female', 'ladies': 'female', 'boys': 'male', 'girls': 'female'})
             
             encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-            encoder.fit(df[["gender", "age_group", "occasion", "skin_tone", "style"]])
+            encoder.fit(df[ML_FEATURES])
             ml_cache["encoder"] = encoder
             ml_cache["data"] = df
             ml_cache["loaded"] = True
@@ -67,7 +71,7 @@ def load_model():
             }]
             df = pd.DataFrame(fallback_data)
             encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-            encoder.fit(df[["gender", "age_group", "occasion", "skin_tone", "style"]])
+            encoder.fit(df[ML_FEATURES])
             ml_cache["encoder"] = encoder
             ml_cache["data"] = df
             ml_cache["loaded"] = True
@@ -90,17 +94,20 @@ def recommend(profile: UserProfile):
         else:
             user_gender = "unisex"
             
-        filtered_df = ml_cache["data"][
-            (ml_cache["data"]["gender"].isin([user_gender, "unisex"])) & 
-            (ml_cache["data"]["price"] <= profile.max_price)
-        ].copy()
+        gender_mask = ml_cache["data"]["gender"].isin([user_gender, "unisex"])
+        price_mask = ml_cache["data"]["price"] <= profile.max_price
+        
+        filtered_df = ml_cache["data"][gender_mask & price_mask].copy()
         
         if filtered_df.empty: 
-            filtered_df = ml_cache["data"].copy() 
+            filtered_df = ml_cache["data"][gender_mask].copy()
+            if filtered_df.empty:
+                filtered_df = ml_cache["data"].copy()
 
-        user_df = pd.DataFrame([traits])
+        user_df = pd.DataFrame([{k: traits.get(k, 'unisex') for k in ML_FEATURES}])
         user_vec = ml_cache["encoder"].transform(user_df)
-        dataset_vecs = ml_cache["encoder"].transform(filtered_df[["gender","age_group","occasion","skin_tone","style"]])
+        
+        dataset_vecs = ml_cache["encoder"].transform(filtered_df[ML_FEATURES])
         sim = cosine_similarity(user_vec, dataset_vecs)
         
         top_pool_size = min(40, len(filtered_df))
@@ -162,17 +169,20 @@ async def analyze_image(file: UploadFile = File(...), max_price: float = Form(10
     else:
         user_gender = "unisex"
         
-    filtered_df = ml_cache["data"][
-        (ml_cache["data"]["gender"].isin([user_gender, "unisex"])) & 
-        (ml_cache["data"]["price"] <= max_price)
-    ].copy()
+    gender_mask = ml_cache["data"]["gender"].isin([user_gender, "unisex"])
+    price_mask = ml_cache["data"]["price"] <= max_price
+    
+    filtered_df = ml_cache["data"][gender_mask & price_mask].copy()
     
     if filtered_df.empty: 
-        filtered_df = ml_cache["data"].copy()
+        filtered_df = ml_cache["data"][gender_mask].copy()
+        if filtered_df.empty:
+            filtered_df = ml_cache["data"].copy()
     
-    user_df = pd.DataFrame([traits])
+    user_df = pd.DataFrame([{k: traits.get(k, 'unisex') for k in ML_FEATURES}])
     user_vec = ml_cache["encoder"].transform(user_df)
-    dataset_vecs = ml_cache["encoder"].transform(filtered_df[["gender","age_group","occasion","skin_tone","style"]])
+    
+    dataset_vecs = ml_cache["encoder"].transform(filtered_df[ML_FEATURES])
     sim = cosine_similarity(user_vec, dataset_vecs)
     
     top_pool_size = min(40, len(filtered_df))
