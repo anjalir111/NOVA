@@ -78,36 +78,43 @@ def health():
 
 @app.post("/recommend")
 def recommend(profile: UserProfile):
-    load_model()
-    traits = profile.dict()
+    try:
+        load_model()
+        traits = profile.model_dump() if hasattr(profile, "model_dump") else profile.dict()
 
-    raw_gender = str(traits.get("gender", "unisex")).strip().lower()
-    if "female" in raw_gender or "women" in raw_gender:
-        user_gender = "female"
-    elif "male" in raw_gender or "men" in raw_gender:
-        user_gender = "male"
-    else:
-        user_gender = "unisex"
+        raw_gender = str(traits.get("gender", "unisex")).strip().lower()
+        if "female" in raw_gender or "women" in raw_gender:
+            user_gender = "female"
+        elif "male" in raw_gender or "men" in raw_gender:
+            user_gender = "male"
+        else:
+            user_gender = "unisex"
+            
+        filtered_df = ml_cache["data"][
+            (ml_cache["data"]["gender"].isin([user_gender, "unisex"])) & 
+            (ml_cache["data"]["price"] <= profile.max_price)
+        ].copy()
         
-    filtered_df = ml_cache["data"][
-        (ml_cache["data"]["gender"].isin([user_gender, "unisex"])) & 
-        (ml_cache["data"]["price"] <= profile.max_price)
-    ].copy()
-    
-    if filtered_df.empty: 
-        filtered_df = ml_cache["data"].copy() 
+        if filtered_df.empty: 
+            filtered_df = ml_cache["data"].copy() 
 
-    user_df = pd.DataFrame([traits])
-    user_vec = ml_cache["encoder"].transform(user_df)
-    dataset_vecs = ml_cache["encoder"].transform(filtered_df[["gender","age_group","occasion","skin_tone","style"]])
-    sim = cosine_similarity(user_vec, dataset_vecs)
-    num_results = min(12, len(filtered_df))
-    top = sim[0].argsort()[-num_results:][::-1]
-    results = filtered_df.iloc[top].to_dict("records")
-    
-    del user_df, user_vec, dataset_vecs, sim
-    gc.collect()
-    return {"results": results}
+        user_df = pd.DataFrame([traits])
+        user_vec = ml_cache["encoder"].transform(user_df)
+        dataset_vecs = ml_cache["encoder"].transform(filtered_df[["gender","age_group","occasion","skin_tone","style"]])
+        sim = cosine_similarity(user_vec, dataset_vecs)
+        
+        top_pool_size = min(40, len(filtered_df))
+        top_indices = sim[0].argsort()[-top_pool_size:][::-1]
+        top_pool = filtered_df.iloc[top_indices]
+        
+        results = top_pool.sample(n=min(12, len(top_pool))).to_dict("records")
+        
+        del user_df, user_vec, dataset_vecs, sim
+        gc.collect()
+        return {"results": results}
+    except Exception as e:
+        print(f"Manual Recommend Error: {e}")
+        return {"error": "Failed to process manual parameters."}
 
 @app.post("/analyze-image")
 async def analyze_image(file: UploadFile = File(...), max_price: float = Form(1000.0)):
@@ -167,9 +174,12 @@ async def analyze_image(file: UploadFile = File(...), max_price: float = Form(10
     user_vec = ml_cache["encoder"].transform(user_df)
     dataset_vecs = ml_cache["encoder"].transform(filtered_df[["gender","age_group","occasion","skin_tone","style"]])
     sim = cosine_similarity(user_vec, dataset_vecs)
-    num_results = min(12, len(filtered_df))
-    top = sim[0].argsort()[-num_results:][::-1]
-    recommendations = filtered_df.iloc[top].to_dict("records")
+    
+    top_pool_size = min(40, len(filtered_df))
+    top_indices = sim[0].argsort()[-top_pool_size:][::-1]
+    top_pool = filtered_df.iloc[top_indices]
+    
+    recommendations = top_pool.sample(n=min(12, len(top_pool))).to_dict("records")
 
     return {"traits": traits, "recommendations": recommendations}
 
