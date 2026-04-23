@@ -30,12 +30,14 @@ def evaluate_engine(num_test_users=100):
     print("-" * 90)
 
     for i in range(num_test_users):
+        realistic_persona = df.sample(1).iloc[0]
+        
         test_user = {
-            "gender": random.choice(df["gender"].unique()),
-            "age_group": random.choice(df["age_group"].unique()),
-            "occasion": random.choice(df["occasion"].unique()),
-            "skin_tone": random.choice(df["skin_tone"].unique()),
-            "style": random.choice(df["style"].unique())
+            "gender": realistic_persona["gender"],
+            "age_group": realistic_persona["age_group"],
+            "occasion": realistic_persona["occasion"],
+            "skin_tone": realistic_persona["skin_tone"],
+            "style": realistic_persona["style"]
         }
 
         user_df = pd.DataFrame([test_user])
