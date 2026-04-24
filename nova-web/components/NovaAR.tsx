@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Pose } from "@mediapipe/pose";
-import { Camera } from "@mediapipe/camera_utils";
+import Script from "next/script";
 import { Loader2, X } from "lucide-react";
 
 export default function NovaAR({ onClose }: { onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [poseLoaded, setPoseLoaded] = useState(false);
+  const [camLoaded, setCamLoaded] = useState(false);
 
   useEffect(() => {
+    if (!poseLoaded || !camLoaded) return;
+
     const videoElement = videoRef.current;
     const canvasElement = canvasRef.current;
     if (!videoElement || !canvasElement) return;
@@ -20,8 +23,13 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
     const hoodieImage = new Image();
     hoodieImage.src = "/hoodie.png"; 
 
-    const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+    const PoseClass = (window as any).Pose;
+    const CameraClass = (window as any).Camera;
+
+    if (!PoseClass || !CameraClass) return;
+
+    const pose = new PoseClass({
+      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
     });
 
     pose.setOptions({
@@ -33,7 +41,7 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
       minTrackingConfidence: 0.5,
     });
 
-    pose.onResults((results) => {
+    pose.onResults((results: any) => {
       setIsLoading(false);
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -48,7 +56,7 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
         if (leftVis > 0.5 && rightVis > 0.5) {
           
           const shoulderWidth = Math.abs(rightShoulder.x - leftShoulder.x) * canvasElement.width;
-          const hoodieWidth = shoulderWidth * 2.8;
+          const hoodieWidth = shoulderWidth * 2.8; 
           const aspectRatio = hoodieImage.height / hoodieImage.width;
           const hoodieHeight = hoodieWidth * aspectRatio;
           const centerX = ((leftShoulder.x + rightShoulder.x) / 2) * canvasElement.width;
@@ -57,7 +65,7 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
           canvasCtx.drawImage(
             hoodieImage,
             centerX - (hoodieWidth / 2),
-            centerY - (hoodieHeight * 0.25),
+            centerY - (hoodieHeight * 0.25), 
             hoodieWidth,
             hoodieHeight
           );
@@ -66,9 +74,9 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
       canvasCtx.restore();
     });
 
-    const camera = new Camera(videoElement, {
+    const camera = new CameraClass(videoElement, {
       onFrame: async () => {
-        if (videoElement.readyState === 4) {
+        if (videoElement.readyState === 4) { 
           await pose.send({ image: videoElement });
         }
       },
@@ -82,10 +90,13 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
       camera.stop();
       pose.close();
     };
-  }, []);
+  }, [poseLoaded, camLoaded]);
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4">
+      <Script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" onLoad={() => setCamLoaded(true)} />
+      <Script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" onLoad={() => setPoseLoaded(true)} />
+
       <button 
         onClick={onClose} 
         className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all z-50"
@@ -97,7 +108,9 @@ export default function NovaAR({ onClose }: { onClose: () => void }) {
         {isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-zinc-950">
             <Loader2 className="animate-spin text-blue-500 mb-4" size={40} />
-            <p className="text-white font-mono uppercase tracking-widest text-sm font-bold">Calibrating AR Engine...</p>
+            <p className="text-white font-mono uppercase tracking-widest text-sm font-bold">
+              {(!poseLoaded || !camLoaded) ? "Downloading AI Core..." : "Calibrating AR Engine..."}
+            </p>
           </div>
         )}
         
