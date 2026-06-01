@@ -17,7 +17,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "dummy")
 genai.configure(api_key=GEMINI_API_KEY)
 
 app = FastAPI(title="NOVA Core Engine")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
