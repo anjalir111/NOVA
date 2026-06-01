@@ -25,7 +25,6 @@ export default function Navbar({ activeFeature, setActiveFeature }: NavbarProps)
           NOVA<span className="text-blue-500 font-sans animate-pulse">_</span>
         </h1>
       </div>
-      
       <div className="w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar flex justify-center md:justify-end">
         <div className="flex gap-1.5 md:gap-2 bg-white/5 border border-white/10 p-1.5 rounded-2xl backdrop-blur-xl shadow-2xl min-w-max">
           {["home", "find-clothes", "rate-outfit"].map((tab) => (
