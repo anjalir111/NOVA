@@ -191,7 +191,7 @@ NOVA does **not rely on dummy data**.
 The project includes a custom scraper:
 
 ```
-backend/ml/fetch_real_clothes.py
+backend/ml/fetch_real_clothes.py TEST
 ```
 
 This script calls the **ASOS RapidAPI endpoint** to compile a dataset of real clothing items including:
