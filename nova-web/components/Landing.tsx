@@ -114,7 +114,7 @@ export default function Landing({ onStart }: { onStart: () => void }) {
       >
         <div className="inline-flex items-center space-x-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full text-zinc-300 text-xs font-bold uppercase tracking-widest shadow-2xl mb-6 backdrop-blur-md">
           <Sparkles size={14} className="text-blue-400 animate-pulse" />
-          <span>Intelligent Styling Matrix</span>
+          <span>Smart Styling Matrix</span>
         </div>
         
         <h1 className="text-5xl md:text-8xl font-black tracking-tighter leading-[0.9] text-white mb-6">
